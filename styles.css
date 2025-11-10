@@ -1,0 +1,13 @@
+/* styles.css — базовые стили */
+body {
+  font-family: Arial, sans-serif;
+  max-width: 900px;
+  margin: 40px auto;
+  line-height: 1.6;
+  padding: 0 16px;
+  color: #222;
+  background: #fff;
+}
+header h1 { margin: 0 0 16px; }
+a { color: #0366d6; text-decoration: none; }
+footer { margin-top: 40px; font-size: 0.9em; color: #666; text-align: center; }
