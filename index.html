@@ -3,54 +3,94 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Интерактивная карта — метки, CSV, localStorage</title>
+  <title>Интерактивная карта — метки, XLSX/CSV, localStorage</title>
 
   <style>
     :root{
       --accent:#1e88e5;
       --bg:#fafafa;
-      --panel-width:340px;
+      --panel-width:360px;
+      --drawer-width:360px;
     }
     html,body{height:100%;margin:0;font-family:Arial,Helvetica,sans-serif;background:var(--bg);color:#111}
     #map{position:absolute;left:0;right:0;top:0;bottom:0}
-    /* Панель управления слева */
+
+    /* Панель слева */
     .panel{
       position:fixed; z-index:999; top:16px; left:16px;
       width:var(--panel-width); max-width:calc(100% - 32px);
-      background:#fff; border-radius:10px; box-shadow:0 6px 18px rgba(0,0,0,0.12);
-      padding:12px; overflow:auto; max-height:80vh;
+      background:#fff; border-radius:12px; box-shadow:0 6px 18px rgba(0,0,0,0.12);
+      padding:12px; overflow:auto; max-height:86vh;
     }
     .panel h3{margin:0 0 8px 0;font-size:18px}
-    .controls{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+    .controls{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
     .controls button{
-      background:var(--accent); color:#fff; border:none; padding:8px 10px; border-radius:6px; cursor:pointer;
+      background:var(--accent); color:#fff; border:none; padding:8px 10px; border-radius:8px; cursor:pointer;
       font-size:13px;
     }
     .controls button.secondary{background:#efefef;color:#222}
     .controls input[type=file]{display:none}
     .status{font-size:12px;color:#444;margin-bottom:8px}
-    .marker-list{margin-top:8px}
-    .marker-item{padding:6px;border-radius:6px;background:#f7f7f7;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center}
-    .marker-item .meta{font-size:13px}
-    .marker-item button{background:transparent;border:0;color:var(--accent);cursor:pointer}
+    .hint{font-size:12px;color:#666;margin:6px 0 10px}
+
+    .row{display:flex;gap:8px}
+    .row > *{flex:1}
+    input[type=text], select{
+      width:100%; padding:8px; border:1px solid #ddd; border-radius:8px; font-size:13px;
+      box-sizing:border-box;
+    }
+
+    .marker-list{margin-top:10px}
+    .marker-item{
+      padding:8px;border-radius:10px;background:#f7f7f7;margin-bottom:8px;
+      display:flex;justify-content:space-between;align-items:center;gap:8px;
+    }
+    .marker-item .meta{font-size:13px;min-width:0}
+    .marker-item .meta strong{display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+    .marker-item .meta .sub{font-size:12px;color:#444;white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+    .marker-item button{background:transparent;border:0;color:var(--accent);cursor:pointer;font-size:13px;white-space:nowrap}
+
     /* Модал форма */
     .modal{
       position:fixed;z-index:2000;left:50%;top:50%;transform:translate(-50%,-50%);
-      width:520px;max-width:95%;background:#fff;padding:14px;border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,0.25);
+      width:560px;max-width:95%;background:#fff;padding:14px;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,0.25);
       display:none;
     }
-    .modal .row{display:flex;gap:8px;margin-bottom:8px}
-    .modal label{font-size:13px;margin-bottom:4px;display:block}
-    .modal input[type=text],.modal select{width:100%;padding:8px;border:1px solid #ddd;border-radius:6px}
-    .modal .actions{display:flex;gap:8px;justify-content:flex-end;margin-top:10px}
-    .modal .actions button{padding:8px 12px;border-radius:6px;border:0;cursor:pointer}
+    .modal h3{margin:0 0 8px 0}
+    .modal label{font-size:13px;margin:6px 0 4px;display:block}
+    .modal .actions{display:flex;gap:8px;justify-content:flex-end;margin-top:12px}
+    .modal .actions button{padding:8px 12px;border-radius:8px;border:0;cursor:pointer}
     .modal .actions .btn-cancel{background:#efefef}
     .modal .actions .btn-save{background:var(--accent);color:#fff}
-    /* Балун: небольшой стиль для содержимого */
-    .balloon-img{max-width:200px;max-height:120px;display:block;margin-top:8px;border-radius:6px}
-    /* Инфо-подсказка */
-    .hint{font-size:12px;color:#666;margin-bottom:6px}
-    @media(max-width:600px){
+
+    /* Drawer справа (карточка метки) */
+    .drawer{
+      position:fixed; z-index:1500; top:16px; right:16px;
+      width:var(--drawer-width); max-width:calc(100% - 32px);
+      background:#fff; border-radius:12px; box-shadow:0 6px 18px rgba(0,0,0,0.12);
+      padding:12px; display:none; max-height:86vh; overflow:auto;
+    }
+    .drawer .top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+    .drawer h3{margin:0;font-size:18px}
+    .drawer .close{border:0;background:#efefef;border-radius:8px;padding:6px 10px;cursor:pointer}
+    .drawer .field{margin-top:8px;font-size:13px}
+    .drawer .field .label{color:#666;font-size:12px;margin-bottom:2px}
+    .drawer a{color:var(--accent);text-decoration:none}
+    .drawer img{max-width:100%;border-radius:10px;margin-top:10px;display:block}
+    .drawer .actions{display:flex;gap:8px;margin-top:12px}
+    .drawer .actions button{flex:1;border:0;border-radius:8px;padding:8px 10px;cursor:pointer}
+    .drawer .actions .edit{background:var(--accent);color:#fff}
+    .drawer .actions .del{background:#ef5350;color:#fff}
+
+    /* Прогресс импорта */
+    .progress{
+      margin-top:10px; background:#f3f3f3; border-radius:999px; overflow:hidden; height:10px; display:none;
+    }
+    .progress > div{height:10px; width:0%;}
+    .small{font-size:12px;color:#666;margin-top:6px}
+
+    @media(max-width:900px){
+      .drawer{right:8px;left:8px;width:auto}
       .panel{left:8px;right:8px;width:auto}
     }
   </style>
@@ -58,115 +98,170 @@
 <body>
   <div id="map"></div>
 
+  <!-- Панель управления -->
   <div class="panel" id="panel">
     <h3>Управление метками</h3>
+
     <div class="controls">
       <button id="btnAdd">Добавить метку</button>
-      <button id="btnExport" class="secondary">Экспорт CSV</button>
-      <label class="secondary" style="display:inline-flex;align-items:center;padding:6px 8px;border-radius:6px;background:#efefef;cursor:pointer;">
-        <input type="file" id="fileImport" accept=".csv"/>
-        Импорт CSV
-      </label>
-      <button id="btnClear" class="secondary">Очистить все</button>
-    </div>
-    <div class="status" id="status">Режим добавления: <strong id="mode">выкл</strong></div>
-    <div class="hint">Добавление: нажмите "Добавить метку", затем кликните на карте в нужном месте</div>
 
-    <div style="margin-top:8px">
-      <strong>Список меток</strong>
+      <button id="btnExport" class="secondary">Экспорт CSV</button>
+
+      <label class="secondary" style="display:inline-flex;align-items:center;padding:6px 8px;border-radius:8px;background:#efefef;cursor:pointer;">
+        <input type="file" id="fileImportCsv" accept=".csv,.tsv,.txt"/>
+        Импорт CSV/TSV
+      </label>
+
+      <label class="secondary" style="display:inline-flex;align-items:center;padding:6px 8px;border-radius:8px;background:#efefef;cursor:pointer;">
+        <input type="file" id="fileImportXlsx" accept=".xlsx"/>
+        Импорт XLSX
+      </label>
+
+      <button id="btnClear" class="secondary">Очистить</button>
+    </div>
+
+    <div class="status">Режим добавления: <strong id="mode">выкл</strong></div>
+    <div class="hint">Добавление: нажми «Добавить метку», затем кликни на карте</div>
+
+    <div class="row" style="margin-top:8px">
+      <input id="search" type="text" placeholder="Поиск по названию/стране/городу…" />
+    </div>
+
+    <div class="row" style="margin-top:8px">
+      <select id="filterCategory">
+        <option value="">Все категории</option>
+      </select>
+    </div>
+
+    <div class="progress" id="progress"><div id="progressBar"></div></div>
+    <div class="small" id="progressText" style="display:none;"></div>
+
+    <div style="margin-top:10px">
+      <strong>Список</strong>
       <div class="marker-list" id="markerList"></div>
     </div>
-  </div>
 
-  <!-- Модал-форма для ввода данных метки -->
-  <div class="modal" id="modal">
-    <h3 id="modalTitle">Добавить метку</h3>
-    <div class="form">
-      <div style="margin-bottom:8px"><label>Координаты</label><div id="coordsText" style="font-size:13px;color:#333"></div></div>
-      <div class="row">
-        <div style="flex:1">
-          <label>Название</label>
-          <input type="text" id="inpName" placeholder="Название (пример: Кафе «Уют»)" />
-        </div>
-        <div style="width:140px">
-          <label>Направление</label>
-          <input type="text" id="inpCategory" placeholder="Категория" />
-        </div>
+    <div style="margin-top:12px;border-top:1px solid #eee;padding-top:10px">
+      <strong>Общие метки (без сервера)</strong>
+      <div class="small">Можно загрузить JSON по ссылке (например, файл <code>shared-markers.json</code> в репозитории).</div>
+      <div class="row" style="margin-top:6px">
+        <input id="sharedUrl" type="text" placeholder="URL до shared-markers.json" />
       </div>
-
-      <div class="row">
-        <div style="flex:1">
-          <label>Страна</label>
-          <input type="text" id="inpCountry" placeholder="Страна" />
-        </div>
-        <div style="width:140px">
-          <label>Город</label>
-          <input type="text" id="inpCity" placeholder="Город" />
-        </div>
+      <div class="controls" style="margin-top:8px">
+        <button id="btnLoadShared" class="secondary">Загрузить общие</button>
+        <button id="btnDownloadSharedJson" class="secondary">Скачать JSON</button>
       </div>
-
-      <div class="row">
-        <div style="flex:1">
-          <label>Ссылка (URL)</label>
-          <input type="text" id="inpLink" placeholder="https://..." />
-        </div>
-        <div style="width:140px">
-          <label>Изображение (URL)</label>
-          <input type="text" id="inpImage" placeholder="https://...jpg" />
-        </div>
-      </div>
-
-      <div class="actions">
-        <button class="btn-cancel" id="btnCancel">Отмена</button>
-        <button class="btn-save" id="btnSave">Сохранить</button>
-      </div>
+      <div class="small">Чтобы «опубликовать» для всех — скачай JSON и закоммить его в репозиторий.</div>
     </div>
   </div>
 
-  <!-- Яндекс.Карты API -->
+  <!-- Drawer (карточка метки справа) -->
+  <div class="drawer" id="drawer">
+    <div class="top">
+      <h3 id="dTitle">Метка</h3>
+      <button class="close" id="dClose">Закрыть</button>
+    </div>
+
+    <div class="field"><div class="label">Категория</div><div id="dCategory">—</div></div>
+    <div class="field"><div class="label">Локация</div><div id="dPlace">—</div></div>
+    <div class="field"><div class="label">Описание</div><div id="dDesc">—</div></div>
+    <div class="field" id="dLinkWrap" style="display:none;"><div class="label">Ссылка</div><div><a id="dLink" href="#" target="_blank" rel="noopener">Открыть</a></div></div>
+    <img id="dImg" alt="" style="display:none;" />
+
+    <div class="actions">
+      <button class="edit" id="dEdit">Редактировать</button>
+      <button class="del" id="dDelete">Удалить</button>
+    </div>
+  </div>
+
+  <!-- Модал -->
+  <div class="modal" id="modal">
+    <h3 id="modalTitle">Добавить метку</h3>
+    <div style="font-size:13px;color:#333;margin-bottom:8px">
+      <strong>Координаты:</strong> <span id="coordsText">—</span>
+    </div>
+
+    <label>Название *</label>
+    <input type="text" id="inpName" placeholder="Название" />
+
+    <div class="row" style="margin-top:8px">
+      <div>
+        <label>Страна</label>
+        <input type="text" id="inpCountry" placeholder="Страна" />
+      </div>
+      <div>
+        <label>Город</label>
+        <input type="text" id="inpCity" placeholder="Город" />
+      </div>
+    </div>
+
+    <label style="margin-top:8px">Категория</label>
+    <input type="text" id="inpCategory" placeholder="Направление/категория" />
+
+    <label style="margin-top:8px">Ссылка (URL)</label>
+    <input type="text" id="inpLink" placeholder="https://..." />
+
+    <label style="margin-top:8px">Изображение (URL)</label>
+    <input type="text" id="inpImage" placeholder="https://...jpg/png" />
+
+    <label style="margin-top:8px">Описание</label>
+    <input type="text" id="inpDescription" placeholder="Короткое описание" />
+
+    <div class="actions">
+      <button class="btn-cancel" id="btnCancel">Отмена</button>
+      <button class="btn-save" id="btnSave">Сохранить</button>
+    </div>
+  </div>
+
+  <!-- Yandex Maps -->
   <script src="https://api-maps.yandex.ru/2.1/?lang=ru_RU"></script>
+  <!-- SheetJS (XLSX import) -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
   <script>
-    // === Конфигурация ===
-    const STORAGE_KEY = 'myMapMarkers_v1';
+    // =========================
+    // CONFIG
+    // =========================
+    const STORAGE_KEY_LOCAL = 'myMapMarkers_local_v2';
+    const STORAGE_KEY_SHARED_CACHE = 'myMapMarkers_sharedCache_v2';
 
-    // === Переменные состояния ===
+    // marker model:
+    // { id, coords:[lat,lon], name, country, city, category, link, image, description, source:'local'|'shared' }
+
     let map;
-    let markers = []; // массив объектов: {id, coords:[lat,lon], name, country, city, category, link, image}
-    let ymMarkers = {}; // mapping id -> ymaps.Placemark
+    let clusterer;
+    let markers = [];      // all markers displayed (local + shared)
+    let localMarkers = []; // local only
+    let sharedMarkers = []; // shared only
+    let ymPlacemarkById = {}; // id -> placemark
+
     let addMode = false;
-    let pendingCoords = null; // coords выбранные для новой метки
-    let editingId = null; // если редактируем существующую метку
+    let pendingCoords = null;
+    let editingId = null; // id of marker in edit mode
 
-    // === Инициализация карты ===
-    ymaps.ready(init);
-    function init(){
-      map = new ymaps.Map('map', {
-        center: [20,0],
-        zoom: 2,
-        controls: ['zoomControl','fullscreenControl']
-      });
-
-      // Загрузить сохранённые метки
-      loadMarkersFromStorage();
-      renderAllMarkers();
-
-      // Обработчик клика по карте — только в addMode
-      map.events.add('click', function(e){
-        if(!addMode) return;
-        pendingCoords = e.get('coords'); // [lat, lon]
-        openModalForNewMarker(pendingCoords);
-      });
-    }
-
-    // === UI элементы ===
+    // UI refs
     const btnAdd = document.getElementById('btnAdd');
     const btnExport = document.getElementById('btnExport');
-    const fileImport = document.getElementById('fileImport');
     const btnClear = document.getElementById('btnClear');
+    const fileImportCsv = document.getElementById('fileImportCsv');
+    const fileImportXlsx = document.getElementById('fileImportXlsx');
     const statusMode = document.getElementById('mode');
     const markerList = document.getElementById('markerList');
+
+    const searchInput = document.getElementById('search');
+    const filterCategory = document.getElementById('filterCategory');
+
+    const progress = document.getElementById('progress');
+    const progressBar = document.getElementById('progressBar');
+    const progressText = document.getElementById('progressText');
+
+    const sharedUrl = document.getElementById('sharedUrl');
+    const btnLoadShared = document.getElementById('btnLoadShared');
+    const btnDownloadSharedJson = document.getElementById('btnDownloadSharedJson');
+
+    // modal refs
     const modal = document.getElementById('modal');
+    const modalTitle = document.getElementById('modalTitle');
     const coordsText = document.getElementById('coordsText');
     const inpName = document.getElementById('inpName');
     const inpCountry = document.getElementById('inpCountry');
@@ -174,74 +269,118 @@
     const inpCategory = document.getElementById('inpCategory');
     const inpLink = document.getElementById('inpLink');
     const inpImage = document.getElementById('inpImage');
+    const inpDescription = document.getElementById('inpDescription');
     const btnCancel = document.getElementById('btnCancel');
     const btnSave = document.getElementById('btnSave');
-    const modalTitle = document.getElementById('modalTitle');
 
+    // drawer refs
+    const drawer = document.getElementById('drawer');
+    const dClose = document.getElementById('dClose');
+    const dTitle = document.getElementById('dTitle');
+    const dCategory = document.getElementById('dCategory');
+    const dPlace = document.getElementById('dPlace');
+    const dDesc = document.getElementById('dDesc');
+    const dLinkWrap = document.getElementById('dLinkWrap');
+    const dLink = document.getElementById('dLink');
+    const dImg = document.getElementById('dImg');
+    const dEdit = document.getElementById('dEdit');
+    const dDelete = document.getElementById('dDelete');
+
+    let drawerCurrentId = null;
+
+    // =========================
+    // INIT MAP
+    // =========================
+    ymaps.ready(init);
+
+    function init(){
+      map = new ymaps.Map('map', {
+        center: [20,0],
+        zoom: 2,
+        controls: ['zoomControl','fullscreenControl','searchControl']
+      });
+
+      clusterer = new ymaps.Clusterer({
+        preset: 'islands#invertedBlueClusterIcons',
+        groupByCoordinates: false,
+        clusterDisableClickZoom: false,
+        clusterOpenBalloonOnClick: true
+      });
+
+      map.geoObjects.add(clusterer);
+
+      loadLocalFromStorage();
+      loadSharedCacheFromStorage();
+      rebuildAllMarkers();
+      renderAll();
+
+      map.events.add('click', function(e){
+        if(!addMode) return;
+        pendingCoords = e.get('coords');
+        openModalForNewMarker(pendingCoords);
+      });
+    }
+
+    // =========================
+    // UI EVENTS
+    // =========================
     btnAdd.addEventListener('click', ()=>{
       addMode = !addMode;
       statusMode.textContent = addMode ? 'вкл — клик по карте' : 'выкл';
       btnAdd.style.background = addMode ? '#0b5ed7' : '';
-      if(addMode){
-        // подсказка: прокрутка панели, на карте появится tooltip-режим (мы не показываем курсор, просто ждём клик)
-      }
+      closeDrawer();
     });
 
     btnExport.addEventListener('click', exportCSV);
-    fileImport.addEventListener('change', handleImportFile);
+
     btnClear.addEventListener('click', ()=>{
-      if(!confirm('Удалить все метки?')) return;
-      markers = [];
-      saveMarkersToStorage();
-      clearYandexMarkers();
-      renderMarkerList();
-      alert('Все метки удалены');
+      if(!confirm('Очистить локальные метки? (Общие не трогаем)')) return;
+      localMarkers = [];
+      saveLocalToStorage();
+      rebuildAllMarkers();
+      renderAll();
+      alert('Локальные метки очищены');
     });
 
-    btnCancel.addEventListener('click', ()=>{
-      closeModal();
-    });
+    fileImportCsv.addEventListener('change', handleImportCsvFile);
+    fileImportXlsx.addEventListener('change', handleImportXlsxFile);
 
-    btnSave.addEventListener('click', ()=>{
-      const name = inpName.value.trim();
-      const country = inpCountry.value.trim();
-      const city = inpCity.value.trim();
-      const category = inpCategory.value.trim();
-      const link = inpLink.value.trim();
-      const image = inpImage.value.trim();
-      if(!name){
-        alert('Введите название');
+    btnCancel.addEventListener('click', closeModal);
+
+    btnSave.addEventListener('click', saveFromModal);
+
+    searchInput.addEventListener('input', ()=>renderAll());
+    filterCategory.addEventListener('change', ()=>renderAll());
+
+    dClose.addEventListener('click', closeDrawer);
+    dEdit.addEventListener('click', ()=>{
+      if(!drawerCurrentId) return;
+      const m = markers.find(x=>x.id===drawerCurrentId);
+      if(!m) return;
+      openModalForEdit(m);
+    });
+    dDelete.addEventListener('click', ()=>{
+      if(!drawerCurrentId) return;
+      const m = markers.find(x=>x.id===drawerCurrentId);
+      if(!m) return;
+      if(m.source === 'shared'){
+        alert('Это общая метка. Удаление доступно только для локальных меток (или правка общего JSON через репозиторий).');
         return;
       }
-      // coords: either pendingCoords (adding) or existing marker coords (editing)
-      let coords;
-      if(editingId){
-        // редактирование существующей метки
-        const idx = markers.findIndex(m=>m.id===editingId);
-        if(idx===-1){ alert('Ошибка: метка не найдена'); closeModal(); return; }
-        coords = markers[idx].coords;
-        markers[idx] = {...markers[idx], name, country, city, category, link, image};
-        updatePlacemark(markers[idx]);
-      } else {
-        if(!pendingCoords){
-          alert('Сначала кликните на карту, чтобы выбрать место для метки.');
-          return;
-        }
-        coords = [Number(pendingCoords[0]), Number(pendingCoords[1])];
-        const id = 'm' + Date.now();
-        const m = { id, coords, name, country, city, category, link, image };
-        markers.push(m);
-        addPlacemark(m);
+      if(confirm('Удалить метку?')){
+        deleteLocalMarkerById(drawerCurrentId);
+        closeDrawer();
       }
-      saveMarkersToStorage();
-      renderMarkerList();
-      closeModal();
     });
 
-    // === Modal helpers ===
+    btnLoadShared.addEventListener('click', loadSharedFromUrl);
+    btnDownloadSharedJson.addEventListener('click', downloadSharedJson);
+
+    // =========================
+    // MODAL LOGIC
+    // =========================
     function openModalForNewMarker(coords){
       editingId = null;
-      pendingCoords = coords;
       modalTitle.textContent = 'Добавить метку';
       coordsText.textContent = `Ш: ${coords[0].toFixed(6)}, Д: ${coords[1].toFixed(6)}`;
       inpName.value = '';
@@ -250,12 +389,14 @@
       inpCategory.value = '';
       inpLink.value = '';
       inpImage.value = '';
+      inpDescription.value = '';
       showModal();
     }
+
     function openModalForEdit(marker){
       editingId = marker.id;
       pendingCoords = null;
-      modalTitle.textContent = 'Редактировать метку';
+      modalTitle.textContent = marker.source === 'shared' ? 'Просмотр общей метки (локально можно только копировать)' : 'Редактировать метку';
       coordsText.textContent = `Ш: ${marker.coords[0].toFixed(6)}, Д: ${marker.coords[1].toFixed(6)}`;
       inpName.value = marker.name || '';
       inpCountry.value = marker.country || '';
@@ -263,175 +404,281 @@
       inpCategory.value = marker.category || '';
       inpLink.value = marker.link || '';
       inpImage.value = marker.image || '';
+      inpDescription.value = marker.description || '';
       showModal();
+
+      if(marker.source === 'shared'){
+        // В shared режиме мы не редактируем оригинал; но можно "сохранить" как локальную копию.
+        // Оставляем как есть — при Save создадим локальную копию.
+      }
     }
+
     function showModal(){ modal.style.display='block'; }
-    function closeModal(){ modal.style.display='none'; addMode=false; statusMode.textContent='выкл'; btnAdd.style.background=''; pendingCoords=null; editingId=null; }
-
-    // === Storage ===
-    function saveMarkersToStorage(){
-      try{
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(markers));
-      }catch(e){
-        console.error('storage save error', e);
-      }
-    }
-    function loadMarkersFromStorage(){
-      try{
-        const raw = localStorage.getItem(STORAGE_KEY);
-        if(raw) markers = JSON.parse(raw);
-        else markers = [];
-      }catch(e){
-        markers = [];
-      }
+    function closeModal(){
+      modal.style.display='none';
+      addMode=false;
+      statusMode.textContent='выкл';
+      btnAdd.style.background='';
+      pendingCoords=null;
+      editingId=null;
     }
 
-    // === Рендер / ymaps ===
-    function addPlacemark(m){
-      const placemark = new ymaps.Placemark(m.coords, {
-        hintContent: m.name || '',
-        balloonContentHeader: `<strong>${escapeHtml(m.name || '')}</strong>`,
-        balloonContentBody: buildBalloonBodyHtml(m)
-      },{
-        preset: 'islands#blueDotIcon',
-        balloonMaxWidth: 320
-      });
-      placemark.events.add('click', function(){
-        // при клике в балуне добавим кнопки через setContent, но мы уже задали content body
-        // Чтобы кнопки работали — используем события делегирования после открытия балуна
-        setTimeout(()=>attachBalloonButtons(m.id), 100);
-      });
-      map.geoObjects.add(placemark);
-      ymMarkers[m.id] = placemark;
-    }
+    function saveFromModal(){
+      const name = inpName.value.trim();
+      if(!name){ alert('Введите название'); return; }
 
-    function updatePlacemark(m){
-      const placemark = ymMarkers[m.id];
-      if(placemark){
-        placemark.properties.set({
-          hintContent: m.name || '',
-          balloonContentHeader: `<strong>${escapeHtml(m.name || '')}</strong>`,
-          balloonContentBody: buildBalloonBodyHtml(m)
-        });
-      }
-    }
+      const country = inpCountry.value.trim();
+      const city = inpCity.value.trim();
+      const category = inpCategory.value.trim();
+      const link = inpLink.value.trim();
+      const image = inpImage.value.trim();
+      const description = inpDescription.value.trim();
 
-    function clearYandexMarkers(){
-      Object.keys(ymMarkers).forEach(id=>{
-        try{ map.geoObjects.remove(ymMarkers[id]); }catch(e){}
-      });
-      ymMarkers = {};
-    }
+      if(editingId){
+        const m = markers.find(x=>x.id===editingId);
+        if(!m){ alert('Ошибка: метка не найдена'); closeModal(); return; }
 
-    function renderAllMarkers(){
-      clearYandexMarkers();
-      markers.forEach(addPlacemark);
-      renderMarkerList();
-    }
-
-    function buildBalloonBodyHtml(m){
-      let html = `<div style="font-size:13px">${escapeHtml(m.category||'')}</div>`;
-      if(m.country || m.city){
-        html += `<div style="font-size:13px;color:#444">${escapeHtml((m.city?m.city+', ':'') + (m.country||''))}</div>`;
-      }
-      if(m.link){
-        const safe = escapeHtml(m.link);
-        html += `<div style="margin-top:6px"><a href="${safe}" target="_blank" rel="noopener">Перейти по ссылке</a></div>`;
-      }
-      if(m.image){
-        const safeImg = escapeHtml(m.image);
-        html += `<img src="${safeImg}" alt="" class="balloon-img" onerror="this.style.display='none'">`;
-      }
-      // кнопки редактирования и удаления
-      html += `<div style="margin-top:8px"><button data-action="edit" data-id="${m.id}" style="margin-right:8px;border:0;background:#0b5ed7;color:#fff;padding:6px 8px;border-radius:6px;cursor:pointer">Редактировать</button><button data-action="delete" data-id="${m.id}" style="border:0;background:#ef5350;color:#fff;padding:6px 8px;border-radius:6px;cursor:pointer">Удалить</button></div>`;
-      return html;
-    }
-
-    // После открытия балуна — повесим слушатель на кнопки внутри него
-    function attachBalloonButtons(id){
-      const placemark = ymMarkers[id];
-      if(!placemark) return;
-      const balloon = placemark.balloon.getData().balloon;
-      // Найти DOM внутри балуна. Немного хак — используем querySelector по атрибутам
-      const container = document.querySelector('.ymaps-2-1-79-balloon__content') || document.querySelector('.ymaps-balloon-content');
-      if(!container) return;
-      // Делаем делегирование внутри контейнера
-      container.querySelectorAll('button[data-action]').forEach(btn=>{
-        btn.addEventListener('click', (e)=>{
-          const action = btn.getAttribute('data-action');
-          const id = btn.getAttribute('data-id');
-          if(action==='edit') {
-            const mm = markers.find(x=>x.id===id);
-            if(mm) {
-              openModalForEdit(mm);
-            } else alert('Метка не найдена');
-          } else if(action==='delete') {
-            if(confirm('Удалить метку?')){
-              deleteMarkerById(id);
-              placemark.balloon.close();
-            }
-          }
-        });
-      });
-    }
-
-    function deleteMarkerById(id){
-      const idx = markers.findIndex(m=>m.id===id);
-      if(idx!==-1){
-        markers.splice(idx,1);
-        const placemark = ymMarkers[id];
-        if(placemark) map.geoObjects.remove(placemark);
-        delete ymMarkers[id];
-        saveMarkersToStorage();
-        renderMarkerList();
-      }
-    }
-
-    // Список меток в панели
-    function renderMarkerList(){
-      markerList.innerHTML='';
-      if(markers.length===0){
-        markerList.innerHTML='<div style="font-size:13px;color:#666;margin-top:8px">Меток пока нет</div>';
+        if(m.source === 'shared'){
+          // сохраняем как локальную копию
+          const id = 'm' + Date.now() + Math.floor(Math.random()*999);
+          localMarkers.push({
+            id, coords: m.coords.slice(),
+            name, country, city, category, link, image, description,
+            source: 'local'
+          });
+          saveLocalToStorage();
+        }else{
+          // редактируем локальную
+          const idx = localMarkers.findIndex(x=>x.id===editingId);
+          if(idx===-1){ alert('Ошибка: локальная метка не найдена'); closeModal(); return; }
+          localMarkers[idx] = {...localMarkers[idx], name, country, city, category, link, image, description};
+          saveLocalToStorage();
+        }
+        rebuildAllMarkers();
+        renderAll();
+        closeModal();
         return;
       }
-      markers.slice().reverse().forEach(m=>{
+
+      if(!pendingCoords){ alert('Сначала кликните на карту'); return; }
+      const coords = [Number(pendingCoords[0]), Number(pendingCoords[1])];
+      const id = 'm' + Date.now() + Math.floor(Math.random()*999);
+
+      localMarkers.push({ id, coords, name, country, city, category, link, image, description, source:'local' });
+      saveLocalToStorage();
+      rebuildAllMarkers();
+      renderAll();
+      closeModal();
+    }
+
+    // =========================
+    // DRAWER
+    // =========================
+    function openDrawer(marker){
+      drawerCurrentId = marker.id;
+      dTitle.textContent = marker.name || 'Метка';
+      dCategory.textContent = marker.category || '—';
+      dPlace.textContent = [marker.city, marker.country].filter(Boolean).join(', ') || '—';
+      dDesc.textContent = marker.description || '—';
+
+      if(marker.link){
+        dLinkWrap.style.display = '';
+        dLink.href = marker.link;
+      }else{
+        dLinkWrap.style.display = 'none';
+      }
+
+      if(marker.image){
+        dImg.style.display = '';
+        dImg.src = marker.image;
+        dImg.onerror = ()=>{ dImg.style.display='none'; };
+      }else{
+        dImg.style.display = 'none';
+      }
+
+      // кнопки: shared нельзя удалять напрямую
+      dDelete.disabled = marker.source === 'shared';
+      dDelete.style.opacity = marker.source === 'shared' ? 0.6 : 1;
+
+      drawer.style.display = 'block';
+    }
+
+    function closeDrawer(){
+      drawer.style.display = 'none';
+      drawerCurrentId = null;
+    }
+
+    // =========================
+    // STORAGE
+    // =========================
+    function saveLocalToStorage(){
+      try{ localStorage.setItem(STORAGE_KEY_LOCAL, JSON.stringify(localMarkers)); }catch(e){}
+    }
+    function loadLocalFromStorage(){
+      try{
+        const raw = localStorage.getItem(STORAGE_KEY_LOCAL);
+        localMarkers = raw ? JSON.parse(raw) : [];
+      }catch(e){ localMarkers = []; }
+    }
+
+    function saveSharedCacheToStorage(){
+      try{ localStorage.setItem(STORAGE_KEY_SHARED_CACHE, JSON.stringify(sharedMarkers)); }catch(e){}
+    }
+    function loadSharedCacheFromStorage(){
+      try{
+        const raw = localStorage.getItem(STORAGE_KEY_SHARED_CACHE);
+        sharedMarkers = raw ? JSON.parse(raw) : [];
+      }catch(e){ sharedMarkers = []; }
+    }
+
+    // =========================
+    // RENDER MAP
+    // =========================
+    function rebuildAllMarkers(){
+      // merge local + shared
+      markers = [
+        ...sharedMarkers.map(m=>({...m, source:'shared'})),
+        ...localMarkers.map(m=>({...m, source:'local'}))
+      ];
+    }
+
+    function clearMapObjects(){
+      try{ clusterer.removeAll(); }catch(e){}
+      ymPlacemarkById = {};
+    }
+
+    function createPlacemark(m){
+      const placemark = new ymaps.Placemark(m.coords, {
+        hintContent: m.name || '',
+      },{
+        preset: m.source === 'shared' ? 'islands#grayDotIcon' : 'islands#blueDotIcon',
+        openEmptyBalloon: false
+      });
+
+      placemark.events.add('click', ()=>{
+        // при клике — открываем drawer
+        openDrawer(m);
+      });
+
+      ymPlacemarkById[m.id] = placemark;
+      return placemark;
+    }
+
+    function getFilteredMarkers(){
+      const q = (searchInput.value || '').trim().toLowerCase();
+      const cat = filterCategory.value;
+
+      return markers.filter(m=>{
+        if(cat && (m.category||'') !== cat) return false;
+        if(!q) return true;
+        const hay = [
+          m.name, m.country, m.city, m.category, m.description
+        ].filter(Boolean).join(' ').toLowerCase();
+        return hay.includes(q);
+      });
+    }
+
+    function renderAll(){
+      // categories dropdown
+      rebuildCategoryFilter();
+
+      // list
+      renderMarkerList();
+
+      // map
+      const filtered = getFilteredMarkers();
+      clearMapObjects();
+      const placemarks = filtered.map(createPlacemark);
+      clusterer.add(placemarks);
+    }
+
+    function rebuildCategoryFilter(){
+      const current = filterCategory.value;
+      const set = new Set();
+      markers.forEach(m=>{
+        if(m.category) set.add(m.category);
+      });
+      const cats = Array.from(set).sort((a,b)=>a.localeCompare(b,'ru'));
+      filterCategory.innerHTML = `<option value="">Все категории</option>` + cats.map(c=>`<option value="${escapeHtmlAttr(c)}">${escapeHtml(c)}</option>`).join('');
+      // restore
+      if(cats.includes(current)) filterCategory.value = current;
+      else filterCategory.value = '';
+    }
+
+    function renderMarkerList(){
+      markerList.innerHTML = '';
+      const filtered = getFilteredMarkers();
+
+      if(filtered.length===0){
+        markerList.innerHTML = '<div class="small" style="margin-top:8px">Ничего не найдено</div>';
+        return;
+      }
+
+      // показываем последние добавленные сверху (локальные в приоритете)
+      const view = filtered.slice().reverse().slice(0, 2000); // список не бесконечный в DOM
+
+      view.forEach(m=>{
         const div = document.createElement('div');
         div.className='marker-item';
+
         const left = document.createElement('div');
         left.className='meta';
-        left.innerHTML = `<strong>${escapeHtml(m.name)}</strong><div style="font-size:12px;color:#444">${escapeHtml((m.city?m.city+', ':'')+(m.country||''))}</div>`;
+        left.innerHTML = `
+          <strong>${escapeHtml(m.name || 'Без названия')}</strong>
+          <div class="sub">${escapeHtml([m.city, m.country].filter(Boolean).join(', ') || '')}</div>
+          <div class="sub" style="color:${m.source==='shared'?'#666':'#1e88e5'}">${escapeHtml(m.category || '')} ${m.source==='shared'?'• общая':'• локальная'}</div>
+        `;
+
         const right = document.createElement('div');
-        right.innerHTML = `<button title="Перейти к метке" data-go="${m.id}">Перейти</button>`;
-        right.querySelector('button').addEventListener('click', ()=>{
-          const placemark = ymMarkers[m.id];
-          if(placemark){
-            map.setCenter(m.coords, 12, {checkZoomRange:true});
-            placemark.balloon.open();
-          }
+        const btn = document.createElement('button');
+        btn.textContent = 'Показать';
+        btn.addEventListener('click', ()=>{
+          map.setCenter(m.coords, 12, {checkZoomRange:true});
+          openDrawer(m);
         });
-        div.appendChild(left); div.appendChild(right);
+        right.appendChild(btn);
+
+        div.appendChild(left);
+        div.appendChild(right);
         markerList.appendChild(div);
       });
     }
 
-    // === CSV: экспорт и импорт ===
+    function deleteLocalMarkerById(id){
+      const idx = localMarkers.findIndex(m=>m.id===id);
+      if(idx!==-1){
+        localMarkers.splice(idx,1);
+        saveLocalToStorage();
+        rebuildAllMarkers();
+        renderAll();
+      }
+    }
+
+    // =========================
+    // EXPORT CSV
+    // =========================
     function exportCSV(){
+      // экспортируем ВСЕ текущие (локальные + общие), чтобы можно было публиковать
       if(markers.length===0){ alert('Нет меток для экспорта'); return; }
-      const header = ['name','country','city','category','link','image','latitude','longitude'];
+
+      const header = ['name','country','city','category','link','image','description','latitude','longitude','source'];
       const rows = [header.join(',')];
+
       markers.forEach(m=>{
-        const row = [
-          csvEscape(m.name),
+        rows.push([
+          csvEscape(m.name||''),
           csvEscape(m.country||''),
           csvEscape(m.city||''),
           csvEscape(m.category||''),
           csvEscape(m.link||''),
           csvEscape(m.image||''),
-          m.coords[0],
-          m.coords[1]
-        ];
-        rows.push(row.join(','));
+          csvEscape(m.description||''),
+          m.coords?.[0] ?? '',
+          m.coords?.[1] ?? '',
+          csvEscape(m.source||'')
+        ].join(','));
       });
+
       const csvContent = rows.join('\n');
       const blob = new Blob([csvContent], {type:'text/csv;charset=utf-8;'});
       const url = URL.createObjectURL(blob);
@@ -444,147 +691,367 @@
       URL.revokeObjectURL(url);
     }
 
-    function handleImportFile(e){
-      const f = e.target.files[0];
-      if(!f) return;
-      const reader = new FileReader();
-      reader.onload = function(evt){
-        const text = evt.target.result;
-        parseCSV(text).then(rows=>{
-          // rows: array of objects with keys from header
-          importRows(rows);
-        }).catch(err=>{
-          alert('Ошибка разбора CSV: ' + err);
-        });
-      };
-      reader.readAsText(f,'utf-8');
-      // сброс input чтобы можно было загрузить тот же файл снова при необходимости
-      e.target.value = '';
-    }
-
-    async function importRows(rows){
-      if(!Array.isArray(rows) || rows.length===0){ alert('CSV пуст или неверный'); return; }
-      // rows are objects: header -> value
-      // For each row: if latitude & longitude present -> use them
-      // else try to geocode by "city, country" (if present). If geocode fails -> place at map center
-      const toAdd = [];
-      for(const r of rows){
-        const name = (r.name||'').trim();
-        if(!name) continue; // skip empty
-        const country = (r.country||'').trim();
-        const city = (r.city||'').trim();
-        const category = (r.category||'').trim();
-        const link = (r.link||'').trim();
-        const image = (r.image||'').trim();
-        const latRaw = (r.latitude||r.lat||'').toString().trim();
-        const lonRaw = (r.longitude||r.lon||'').toString().trim();
-        let coords = null;
-        if(latRaw && lonRaw && !isNaN(Number(latRaw)) && !isNaN(Number(lonRaw))){
-          coords = [Number(latRaw), Number(lonRaw)];
-        } else {
-          // try geocode by city + country
-          const q = [city, country].filter(Boolean).join(', ');
-          if(q){
-            try{
-              const res = await ymaps.geocode(q, {results:1});
-              const obj = res.geoObjects.get(0);
-              if(obj){
-                const c = obj.geometry.getCoordinates();
-                coords = [c[0], c[1]];
-              }
-            }catch(e){
-              console.warn('geocode error for', q, e);
-            }
-          }
-        }
-        if(!coords){
-          // fallback to map center
-          const center = map.getCenter();
-          coords = [center[0], center[1]];
-        }
-        const id = 'm' + Date.now() + Math.floor(Math.random()*999);
-        toAdd.push({id, coords, name, country, city, category, link, image});
-      }
-
-      // Добавляем все и рендерим
-      let added = 0;
-      toAdd.forEach(m=>{
-        markers.push(m);
-        addPlacemark(m);
-        added++;
-      });
-      saveMarkersToStorage();
-      renderMarkerList();
-      alert(`Импортировано ${added} меток`);
-    }
-
-    // === Вспомогательные: CSV парсер (поддерживает кавычки) ===
     function csvEscape(str){
       if(str===null || str===undefined) return '';
       const s = String(str);
-      if(s.includes('"') || s.includes(',') || s.includes('\n')){
+      if(s.includes('"') || s.includes(',') || s.includes('\n') || s.includes('\t') || s.includes(';')){
         return '"' + s.replace(/"/g,'""') + '"';
       }
       return s;
     }
 
-    function parseCSV(text){
-      return new Promise((resolve, reject)=>{
-        try{
-          const lines = [];
-          let cur = '';
-          let inQuotes = false;
-          let row = [];
-          for(let i=0;i<text.length;i++){
-            const ch = text[i];
-            const next = text[i+1];
-            if(ch === '"'){
-              if(inQuotes && next === '"'){ // escaped quote
-                cur += '"';
-                i++;
-              } else {
-                inQuotes = !inQuotes;
-              }
-            } else if(ch === ',' && !inQuotes){
-              row.push(cur);
-              cur = '';
-            } else if((ch === '\n' || ch === '\r') && !inQuotes){
-              // handle \r\n or \n
-              if(ch === '\r' && next === '\n'){ i++; } // skip one
-              row.push(cur);
-              lines.push(row);
-              row = [];
-              cur = '';
-            } else {
-              cur += ch;
-            }
-          }
-          if(cur !== '' || row.length>0){
-            row.push(cur);
-            lines.push(row);
-          }
-          if(lines.length === 0) return resolve([]);
-          // header:
-          const header = lines[0].map(h => (h||'').trim());
-          const rows = [];
-          for(let r=1;r<lines.length;r++){
-            const arr = lines[r];
-            // skip empty lines
-            if(arr.length===1 && arr[0].trim()==='') continue;
-            const obj = {};
-            for(let c=0;c<header.length;c++){
-              obj[header[c]] = arr[c] !== undefined ? arr[c] : '';
-            }
-            rows.push(obj);
-          }
-          resolve(rows);
-        }catch(e){
-          reject(e);
-        }
-      });
+    // =========================
+    // IMPORT CSV/TSV (auto delimiter: tab / , / ;)
+    // =========================
+    async function handleImportCsvFile(e){
+      const f = e.target.files[0];
+      if(!f) return;
+      const text = await f.text();
+      e.target.value = '';
+      await importTableText(text, 'csv');
     }
 
-    // === Утилиты ===
+    // =========================
+    // IMPORT XLSX
+    // =========================
+    async function handleImportXlsxFile(e){
+      const f = e.target.files[0];
+      if(!f) return;
+
+      const data = await f.arrayBuffer();
+      const wb = XLSX.read(data, {type:'array'});
+      const firstSheetName = wb.SheetNames[0];
+      const ws = wb.Sheets[firstSheetName];
+
+      // sheet to json (rows as objects)
+      const json = XLSX.utils.sheet_to_json(ws, {defval:''});
+      e.target.value = '';
+
+      // json -> rows objects, normalize
+      await importRowsObjects(json, 'xlsx');
+    }
+
+    // =========================
+    // SHARED JSON (no backend)
+    // =========================
+    async function loadSharedFromUrl(){
+      const url = sharedUrl.value.trim();
+      if(!url){ alert('Вставь URL до JSON'); return; }
+
+      try{
+        const res = await fetch(url, {cache:'no-store'});
+        if(!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+
+        if(!Array.isArray(data)){
+          alert('JSON должен быть массивом меток');
+          return;
+        }
+
+        // normalize shared markers
+        sharedMarkers = data
+          .map(x=>normalizeMarker(x, 'shared'))
+          .filter(Boolean);
+
+        saveSharedCacheToStorage();
+        rebuildAllMarkers();
+        renderAll();
+        alert('Общие метки загружены: ' + sharedMarkers.length);
+      }catch(err){
+        alert('Не удалось загрузить JSON: ' + err.message);
+      }
+    }
+
+    function downloadSharedJson(){
+      const blob = new Blob([JSON.stringify(sharedMarkers, null, 2)], {type:'application/json;charset=utf-8;'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'shared-markers.json';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    // =========================
+    // IMPORT CORE
+    // =========================
+    async function importTableText(text, kind){
+      const parsed = parseDelimitedTextToObjects(text);
+      await importRowsObjects(parsed, kind);
+    }
+
+    async function importRowsObjects(rows, kind){
+      if(!Array.isArray(rows) || rows.length===0){
+        alert('Файл пустой или не распознан');
+        return;
+      }
+
+      // normalize rows to marker objects
+      const normalized = rows.map(r=>normalizeMarker(r, 'local')).filter(Boolean);
+
+      if(normalized.length===0){
+        alert('Не найдено строк с названием (name). Проверь шапку/данные.');
+        return;
+      }
+
+      // Для 2000+ предупреждение про геокод
+      const needGeocode = normalized.filter(m=>!m.coords || isNaN(m.coords[0]) || isNaN(m.coords[1]));
+      if(needGeocode.length > 200){
+        alert('В файле много строк без координат. Геокодирование 2000+ может занять очень долго и упереться в лимиты. Если можешь — добавь latitude/longitude в Excel.');
+      }
+
+      // geocode missing coords (city+country)
+      showProgress(0, 'Подготовка…');
+      const geocoded = await geocodeMissingCoords(normalized);
+
+      // add to local markers
+      localMarkers.push(...geocoded.map(m=>({...m, source:'local'})));
+      saveLocalToStorage();
+      rebuildAllMarkers();
+      renderAll();
+      hideProgress();
+
+      alert(`Импортировано ${geocoded.length} меток (${kind.toUpperCase()}).`);
+    }
+
+    function normalizeMarker(row, source){
+      // row can have different headers; accept synonyms
+      // name: name / Название / title
+      const name = pick(row, ['name','Название','title','Name']).trim();
+      if(!name) return null;
+
+      const country = pick(row, ['country','Страна','Country']).trim();
+      const city = pick(row, ['city','Город','City']).trim();
+      const category = pick(row, ['category','Категория','Направление','direction','type']).trim();
+      const link = pick(row, ['link','url','ссылка','Ссылка']).trim();
+      const image = pick(row, ['image','img','Фото','photo','Изображение']).trim();
+      const description = pick(row, ['description','desc','Описание','info']).trim();
+
+      // coords: latitude/longitude OR lat/lng
+      const latRaw = pick(row, ['latitude','lat','Latitude','Lat','широта','Широта']);
+      const lonRaw = pick(row, ['longitude','lng','lon','Longitude','Lng','Долгота','долгота']);
+
+      let coords = null;
+      const lat = toNumber(latRaw);
+      const lon = toNumber(lonRaw);
+
+      if(!isNaN(lat) && !isNaN(lon)){
+        coords = [lat, lon];
+      }
+
+      const id = row.id ? String(row.id) : ('m' + Date.now() + Math.floor(Math.random()*999));
+
+      return { id, coords, name, country, city, category, link, image, description, source };
+    }
+
+    function pick(obj, keys){
+      for(const k of keys){
+        if(obj && Object.prototype.hasOwnProperty.call(obj, k) && obj[k] !== undefined && obj[k] !== null){
+          return String(obj[k]);
+        }
+      }
+      return '';
+    }
+
+    function toNumber(v){
+      if(v===null || v===undefined) return NaN;
+      const s = String(v).trim().replace(',', '.');
+      if(!s) return NaN;
+      const n = Number(s);
+      return n;
+    }
+
+    // =========================
+    // FLEX PARSER (tab / , / ;)
+    // supports quotes
+    // =========================
+    function detectDelimiterSmart(text){
+      const candidates = ['\t', ',', ';'];
+      const sampleLines = text.split(/\r?\n/).slice(0, 20).filter(l=>l.trim().length>0);
+
+      let best = {d:',', score:-1};
+
+      for(const d of candidates){
+        let score = 0;
+        for(const line of sampleLines){
+          // count separators outside quotes
+          score += countSeparatorsOutsideQuotes(line, d);
+        }
+        if(score > best.score) best = {d, score};
+      }
+      return best.d;
+    }
+
+    function countSeparatorsOutsideQuotes(line, sep){
+      let inQuotes = false;
+      let count = 0;
+      for(let i=0;i<line.length;i++){
+        const ch = line[i];
+        if(ch === '"'){
+          if(inQuotes && line[i+1] === '"'){ i++; }
+          else inQuotes = !inQuotes;
+        }else if(ch === sep && !inQuotes){
+          count++;
+        }
+      }
+      return count;
+    }
+
+    function parseDelimitedTextToObjects(text){
+      const delimiter = detectDelimiterSmart(text);
+      const rows = parseDelimited(text, delimiter);
+      if(rows.length===0) return [];
+
+      const header = rows[0].map(h=>String(h||'').trim());
+      const out = [];
+
+      for(let r=1;r<rows.length;r++){
+        const arr = rows[r];
+        // skip empty
+        if(arr.length===1 && String(arr[0]||'').trim()==='') continue;
+        const obj = {};
+        for(let c=0;c<header.length;c++){
+          const key = header[c];
+          if(!key) continue;
+          obj[key] = arr[c] !== undefined ? String(arr[c]).trim() : '';
+        }
+        out.push(obj);
+      }
+      return out;
+    }
+
+    function parseDelimited(text, sep){
+      // quote-aware parser
+      const lines = [];
+      let cur = '';
+      let inQuotes = false;
+      let row = [];
+
+      for(let i=0;i<text.length;i++){
+        const ch = text[i];
+        const next = text[i+1];
+
+        if(ch === '"'){
+          if(inQuotes && next === '"'){ cur += '"'; i++; }
+          else inQuotes = !inQuotes;
+        }else if(ch === sep && !inQuotes){
+          row.push(cur);
+          cur = '';
+        }else if((ch === '\n' || ch === '\r') && !inQuotes){
+          if(ch === '\r' && next === '\n'){ i++; }
+          row.push(cur);
+          lines.push(row);
+          row = [];
+          cur = '';
+        }else{
+          cur += ch;
+        }
+      }
+      if(cur !== '' || row.length>0){
+        row.push(cur);
+        lines.push(row);
+      }
+      return lines;
+    }
+
+    // =========================
+    // GEOCODING (city+country) with throttling + cache
+    // =========================
+    const geocodeCache = new Map(); // key -> coords
+
+    async function geocodeMissingCoords(list){
+      // preload cache from existing markers
+      markers.forEach(m=>{
+        const key = geoKey(m.city, m.country);
+        if(key && m.coords) geocodeCache.set(key, m.coords);
+      });
+
+      const out = [];
+      let done = 0;
+      const total = list.length;
+
+      for(const m of list){
+        if(m.coords && !isNaN(m.coords[0]) && !isNaN(m.coords[1])){
+          out.push(m);
+          done++;
+          updateProgress(done, total, 'Импорт…');
+          continue;
+        }
+
+        const key = geoKey(m.city, m.country);
+        if(key && geocodeCache.has(key)){
+          m.coords = geocodeCache.get(key);
+          out.push(m);
+          done++;
+          updateProgress(done, total, 'Геокодирование (кэш)…');
+          continue;
+        }
+
+        const q = [m.city, m.country].filter(Boolean).join(', ');
+        if(q){
+          try{
+            // throttle: небольшая пауза, чтобы не спамить
+            await sleep(140);
+            const res = await ymaps.geocode(q, {results:1});
+            const obj = res.geoObjects.get(0);
+            if(obj){
+              const c = obj.geometry.getCoordinates();
+              m.coords = [c[0], c[1]];
+              if(key) geocodeCache.set(key, m.coords);
+            }else{
+              // fallback: center of map
+              const center = map.getCenter();
+              m.coords = [center[0], center[1]];
+            }
+          }catch(e){
+            const center = map.getCenter();
+            m.coords = [center[0], center[1]];
+          }
+        }else{
+          const center = map.getCenter();
+          m.coords = [center[0], center[1]];
+        }
+
+        out.push(m);
+        done++;
+        updateProgress(done, total, 'Геокодирование…');
+      }
+
+      return out;
+    }
+
+    function geoKey(city, country){
+      const c = (city||'').trim().toLowerCase();
+      const k = (country||'').trim().toLowerCase();
+      const key = [c,k].filter(Boolean).join('|');
+      return key || '';
+    }
+
+    function sleep(ms){ return new Promise(r=>setTimeout(r, ms)); }
+
+    function showProgress(pct, text){
+      progress.style.display = 'block';
+      progressText.style.display = 'block';
+      progressBar.style.width = pct + '%';
+      progressText.textContent = text || '';
+    }
+    function updateProgress(done, total, label){
+      const pct = Math.round((done/Math.max(1,total))*100);
+      progressBar.style.width = pct + '%';
+      progressText.textContent = `${label} ${done}/${total} (${pct}%)`;
+    }
+    function hideProgress(){
+      progress.style.display = 'none';
+      progressText.style.display = 'none';
+      progressBar.style.width = '0%';
+      progressText.textContent = '';
+    }
+
+    // =========================
+    // HELPERS
+    // =========================
     function escapeHtml(str){
       if(!str) return '';
       return String(str)
@@ -594,16 +1061,9 @@
         .replace(/"/g,'&quot;')
         .replace(/'/g,'&#039;');
     }
-
-    // === Загрузка/иниц. ===
-    // После загрузки страницы: рендерим список (если карта ещё не готова — функция вызовет при init)
-    document.addEventListener('DOMContentLoaded', ()=>{
-      // Если markers уже загружены при ymaps.ready -> renderAllMarkers позаботится
-      renderMarkerList();
-    });
-
-    // === Дополнительно: редактирование удаление через контекст ===
-    // Ничего доп. не нужно — обработчик кнопок в балуне
+    function escapeHtmlAttr(str){
+      return escapeHtml(str).replace(/"/g,'&quot;');
+    }
   </script>
 </body>
 </html>
