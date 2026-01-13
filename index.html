@@ -548,6 +548,7 @@
     }
 
     function createPlacemark(m){
+      if(!Array.isArray(m.coords) || m.coords.length!==2) return null;
       const placemark = new ymaps.Placemark(m.coords, {
         hintContent: m.name || '',
       },{
@@ -588,7 +589,7 @@
       // map
       const filtered = getFilteredMarkers();
       clearMapObjects();
-      const placemarks = filtered.map(createPlacemark);
+      const placemarks = filtered.map(createPlacemark).filter(Boolean);
       clusterer.add(placemarks);
     }
 
@@ -631,11 +632,15 @@
 
         const right = document.createElement('div');
         const btn = document.createElement('button');
-        btn.textContent = 'Показать';
-        btn.addEventListener('click', ()=>{
-          map.setCenter(m.coords, 12, {checkZoomRange:true});
-          openDrawer(m);
-        });
+        const hasCoords = Array.isArray(m.coords) && m.coords.length===2;
+        btn.textContent = hasCoords ? 'Показать' : 'Нет точки';
+        btn.disabled = !hasCoords;
+        if(hasCoords){
+          btn.addEventListener('click', ()=>{
+            map.setCenter(m.coords, 12, {checkZoomRange:true});
+            openDrawer(m);
+          });
+        }
         right.appendChild(btn);
 
         div.appendChild(left);
@@ -899,17 +904,60 @@
       return count;
     }
 
+    function looksLikeHeaderRow(cells){
+      const known = new Set([
+        'name','title','название','имя','organization','org',
+        'country','страна',
+        'city','город',
+        'link','url','ссылка',
+        'category','категория',
+        'latitude','lat','широта',
+        'longitude','lon','lng','долгота'
+      ]);
+      return cells.some(c => known.has(String(c||'').trim().toLowerCase()));
+    }
+
+    function mapRowWithoutHeader(arr){
+      const cells = arr.map(v=>String(v??'').trim());
+      const name = cells[0] || '';
+      const country = cells[1] || '';
+      let city = '';
+      let link = '';
+      for(let i=2;i<cells.length;i++){
+        const v = cells[i];
+        if(!v) continue;
+        const lv = v.toLowerCase();
+        const isUrl = lv.startsWith('http://') || lv.startsWith('https://') || lv.startsWith('www.') || lv.includes('instagram.com') || lv.includes('vk.com');
+        if(isUrl && !link) link = v;
+        else if(!city) city = v;
+      }
+      return { name, country, city, link };
+    }
+
     function parseDelimitedTextToObjects(text){
       const delimiter = detectDelimiterSmart(text);
       const rows = parseDelimited(text, delimiter);
       if(rows.length===0) return [];
 
-      const header = rows[0].map(h=>String(h||'').trim());
+      const firstRow = rows[0].map(h=>String(h||'').trim());
       const out = [];
 
+      // Heuristic: many of your datasets are plain rows without headers:
+      // "NAME <tab> COUNTRY <tab> LINK". If the first row doesn't look like
+      // a header, treat it as data and apply smart column mapping.
+      if(!looksLikeHeaderRow(firstRow)){
+        const dataRows = rows;
+        for(const arr of dataRows){
+          if(arr.length===1 && String(arr[0]||'').trim()==='') continue;
+          const obj = mapRowWithoutHeader(arr);
+          if(Object.keys(obj).length) out.push(obj);
+        }
+        return out;
+      }
+
+      const header = firstRow;
       for(let r=1;r<rows.length;r++){
         const arr = rows[r];
-        // skip empty
         if(arr.length===1 && String(arr[0]||'').trim()==='') continue;
         const obj = {};
         for(let c=0;c<header.length;c++){
@@ -920,6 +968,63 @@
         out.push(obj);
       }
       return out;
+    }
+
+    function looksLikeHeaderRow(cells){
+      if(!cells || !cells.length) return false;
+      const known = new Set([
+        'name','название','title','организация','organization',
+        'country','страна',
+        'city','город',
+        'category','категория','type','тип',
+        'link','url','ссылка','instagram','site','website',
+        'latitude','lat','широта',
+        'longitude','lng','lon','долгота'
+      ]);
+      const norm = (s)=>String(s||'').trim().toLowerCase();
+      const hits = cells
+        .map(norm)
+        .filter(Boolean)
+        .filter(v=>known.has(v) || [...known].some(k=>v===k || v.includes(k)));
+
+      // If at least 2 columns look like known headers — it's a header.
+      if(hits.length>=2) return true;
+
+      // If the first row contains a URL, it's almost certainly data.
+      if(cells.some(v=>isProbablyUrl(String(v||'').trim()))) return false;
+
+      return false;
+    }
+
+    function isProbablyUrl(v){
+      return /^https?:\/\//i.test(v) || /^www\./i.test(v) || /^instagram\.com\//i.test(v);
+    }
+
+    function mapRowWithoutHeader(arr){
+      const cols = arr.map(v=>String(v??'').trim()).filter(v=>v!=='' || arr.length===1);
+      if(cols.length===0) return {};
+
+      // Common format: NAME | COUNTRY | LINK (optionally CITY)
+      const obj = {};
+      obj.name = cols[0] || '';
+
+      // Country is usually second column
+      obj.country = cols[1] || '';
+
+      // Find first URL-like column among the rest
+      const rest = cols.slice(2);
+      const urlIdx = rest.findIndex(isProbablyUrl);
+      if(urlIdx>=0){
+        obj.link = rest[urlIdx];
+        // Any non-url before the link -> treat as city (joined)
+        const cityParts = rest.slice(0, urlIdx).filter(v=>!isProbablyUrl(v));
+        if(cityParts.length) obj.city = cityParts.join(' ');
+      }else{
+        // No link column detected; treat remaining as city
+        if(rest.length) obj.city = rest.join(' ');
+      }
+
+      return obj;
     }
 
     function parseDelimited(text, sep){
@@ -958,22 +1063,112 @@
 
     // =========================
     // GEOCODING (city+country) with throttling + cache
+    // Notes:
+    // - ymaps.geocode часто требует API-ключ с доступом к геокодеру.
+    // - Чтобы метки ставились «сами» даже без геокодера Яндекса,
+    //   используем резервный геокодер Nominatim (OpenStreetMap).
+    // - Запросы выполняем последовательно с паузой (у Nominatim 1 req/sec).
     // =========================
-    const geocodeCache = new Map(); // key -> coords
+
+    const GEOCODE_CACHE_KEY = 'markerGeocodeCacheV1';
+    const geocodeCache = new Map(); // key -> [lat, lon]
+
+    // Load cache from localStorage
+    try{
+      const raw = localStorage.getItem(GEOCODE_CACHE_KEY);
+      if(raw){
+        const obj = JSON.parse(raw);
+        Object.keys(obj||{}).forEach(k=>{
+          const v = obj[k];
+          if(Array.isArray(v) && v.length===2 && !isNaN(v[0]) && !isNaN(v[1])) geocodeCache.set(k, v);
+        });
+      }
+    }catch(e){}
+
+    function persistGeocodeCache(){
+      try{
+        const obj = {};
+        geocodeCache.forEach((v,k)=>{ obj[k] = v; });
+        localStorage.setItem(GEOCODE_CACHE_KEY, JSON.stringify(obj));
+      }catch(e){}
+    }
+
+    async function geocodeWithYmaps(query){
+      if(!query) return null;
+      if(!(window.ymaps && typeof ymaps.geocode === 'function')) return null;
+      const res = await ymaps.geocode(query, {results: 1});
+      const obj = res.geoObjects.get(0);
+      if(!obj) return null;
+      const c = obj.geometry.getCoordinates();
+      return [Number(c[0]), Number(c[1])];
+    }
+
+    async function geocodeWithNominatim(query){
+      if(!query) return null;
+      const url = 'https://nominatim.openstreetmap.org/search?format=json&limit=1&addressdetails=0&q=' + encodeURIComponent(query);
+      const r = await fetch(url, {
+        method: 'GET',
+        headers: {
+          // Nominatim рекомендует указывать Referer/UA, но в браузере мы ограничены.
+          // Добавляем хотя бы Accept.
+          'Accept': 'application/json'
+        }
+      });
+      if(!r.ok) return null;
+      const data = await r.json();
+      if(!Array.isArray(data) || !data.length) return null;
+      const lat = Number(data[0].lat);
+      const lon = Number(data[0].lon);
+      if(isNaN(lat) || isNaN(lon)) return null;
+      return [lat, lon];
+    }
+
+    async function robustGeocode(qFull, qCountry){
+      // 1) Try Yandex geocoder (if available)
+      try{
+        const c1 = await geocodeWithYmaps(qFull);
+        if(c1) return c1;
+        if(qCountry && qCountry !== qFull){
+          const c2 = await geocodeWithYmaps(qCountry);
+          if(c2) return c2;
+        }
+      }catch(e){ /* ignore and fallback */ }
+
+      // 2) Fallback: Nominatim
+      try{
+        const c1 = await geocodeWithNominatim(qFull);
+        if(c1) return c1;
+        if(qCountry && qCountry !== qFull){
+          const c2 = await geocodeWithNominatim(qCountry);
+          if(c2) return c2;
+        }
+      }catch(e){ /* ignore */ }
+
+      return null;
+    }
 
     async function geocodeMissingCoords(list){
       // preload cache from existing markers
       markers.forEach(m=>{
         const key = geoKey(m.city, m.country);
-        if(key && m.coords) geocodeCache.set(key, m.coords);
+        if(key && m.coords && Array.isArray(m.coords) && m.coords.length===2) geocodeCache.set(key, m.coords);
       });
 
       const out = [];
       let done = 0;
       const total = list.length;
 
+      // Throttle: 1 request/sec (Nominatim)
+      let lastCall = 0;
+      async function throttle(){
+        const now = Date.now();
+        const wait = Math.max(0, 1100 - (now - lastCall));
+        if(wait) await sleep(wait);
+        lastCall = Date.now();
+      }
+
       for(const m of list){
-        if(m.coords && !isNaN(m.coords[0]) && !isNaN(m.coords[1])){
+        if(m.coords && Array.isArray(m.coords) && m.coords.length===2 && !isNaN(m.coords[0]) && !isNaN(m.coords[1])){
           out.push(m);
           done++;
           updateProgress(done, total, 'Импорт…');
@@ -989,29 +1184,22 @@
           continue;
         }
 
-        const q = [m.city, m.country].filter(Boolean).join(', ');
-        if(q){
-          try{
-            // throttle: небольшая пауза, чтобы не спамить
-            await sleep(140);
-            const res = await ymaps.geocode(q, {results:1});
-            const obj = res.geoObjects.get(0);
-            if(obj){
-              const c = obj.geometry.getCoordinates();
-              m.coords = [c[0], c[1]];
-              if(key) geocodeCache.set(key, m.coords);
-            }else{
-              // fallback: center of map
-              const center = map.getCenter();
-              m.coords = [center[0], center[1]];
-            }
-          }catch(e){
-            const center = map.getCenter();
-            m.coords = [center[0], center[1]];
+        const qFull = [m.city, m.country].filter(Boolean).join(', ').trim();
+        const qCountry = (m.country||'').trim();
+
+        try{
+          await throttle();
+          const coords = await robustGeocode(qFull, qCountry);
+          if(coords){
+            m.coords = coords;
+            if(key) geocodeCache.set(key, coords);
+          }else{
+            m.coords = null;
+            m.geocode_failed = true;
           }
-        }else{
-          const center = map.getCenter();
-          m.coords = [center[0], center[1]];
+        }catch(e){
+          m.coords = null;
+          m.geocode_failed = true;
         }
 
         out.push(m);
@@ -1019,6 +1207,7 @@
         updateProgress(done, total, 'Геокодирование…');
       }
 
+      persistGeocodeCache();
       return out;
     }
 
